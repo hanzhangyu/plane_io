@@ -1,0 +1,156 @@
+#!/usr/bin/env node
+
+/**
+ * Module dependencies.
+ */
+
+var app = require('../app');
+var debug = require('debug')('plane-io:server');
+var http = require('http');
+var WebSocket = require('ws');
+var uuidV1 = require('uuid/v1');
+
+
+//var a=require('../public/js/constant.js');
+//console.log(a)
+
+/**
+ * Get port from environment and store in Express.
+ */
+
+var port = normalizePort(process.env.PORT || '8080');
+app.set('port', port);
+
+/**
+ * Create HTTP server.
+ */
+
+var server = http.createServer(app);
+
+/**
+ * Create WS server.
+ * 游戏服务器
+ */
+var wss = new WebSocket.Server({server});
+
+var gamePlaneIo = require('../utils/game.planeIo.js');
+var playerPlaneIo = require('../utils/player.planeIo.js');
+
+function sendMessage(ws, type, code, msg) {
+    msg ? ws.send(JSON.stringify({
+        "type": type,
+        "code": code,
+        "msg": msg
+    })) : ws.send(JSON.stringify({
+        "type": type,
+        "code": code
+    }));
+}
+
+wss.on('connection', function connection(ws) {
+    const locationUrl = ws.upgradeReq.url;
+    var username;
+    console.log(locationUrl);
+    console.log('connected');
+    if(locationUrl!="/game/planeIo"){
+        wss.close();
+        return;
+    }
+    sendMessage(ws, 0, 407, "请登录");
+
+    /**
+     * message
+     * type 0 登录验证 [type[,username,password]]
+     */
+    ws.on('message', function (data) {
+        data=JSON.parse(data);
+        console.log(data);
+        switch (data.type) {
+            case 0:// 登录
+                if (data.username) {
+                    if (data.username == "123" && data.password == "123") {
+                        username = data.username;
+                        sendMessage(ws, data.type, 200, "你好," + username);
+                        playerPlaneIo.playerConnected(username,ws);
+                    } else {
+                        sendMessage(ws, data.type, 401, "用户名或密码错误");
+                    }
+                } else {
+                    // 为游客分配UUID
+                    username = "@visitor"+uuidV1();
+                    sendMessage(ws, data.type, 200, "你好,@visitor");
+                    playerPlaneIo.playerConnected(username,ws);
+                }
+                break;
+            case 1:
+        }
+    });
+});
+
+/**
+ * Listen on provided port, on all network interfaces.
+ */
+
+server.listen(port);
+server.on('error', onError);
+server.on('listening', onListening);
+
+/**
+ * Normalize a port into a number, string, or false.
+ */
+
+function normalizePort(val) {
+    var port = parseInt(val, 10);
+
+    if (isNaN(port)) {
+        // named pipe
+        return val;
+    }
+
+    if (port >= 0) {
+        // port number
+        return port;
+    }
+
+    return false;
+}
+
+/**
+ * Event listener for HTTP server "error" event.
+ */
+
+function onError(error) {
+    if (error.syscall !== 'listen') {
+        throw error;
+    }
+
+    var bind = typeof port === 'string'
+        ? 'Pipe ' + port
+        : 'Port ' + port;
+
+    // handle specific listen errors with friendly messages
+    switch (error.code) {
+        case 'EACCES':
+            console.error(bind + ' requires elevated privileges');
+            process.exit(1);
+            break;
+        case 'EADDRINUSE':
+            console.error(bind + ' is already in use');
+            process.exit(1);
+            break;
+        default:
+            throw error;
+    }
+}
+
+/**
+ * Event listener for HTTP server "listening" event.
+ */
+
+function onListening() {
+    var addr = server.address();
+    var bind = typeof addr === 'string'
+        ? 'pipe ' + addr
+        : 'port ' + addr.port;
+    debug('Listening on ' + bind);
+}
